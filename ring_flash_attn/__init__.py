@@ -26,3 +26,6 @@ from .stripe_flash_attn import (
 from .ulysses_flash_attn import(
     ulysses_flash_attn_qkvpacked_func
 )
+from .fastseq_flash_attn import (
+    fastseq_flash_attn_qkvpacked_func
+)

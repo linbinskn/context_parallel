@@ -1,10 +1,9 @@
 import os
-import time
 
 from flash_attn import flash_attn_qkvpacked_func
 import torch
 import torch.distributed as dist
-from ring_flash_attn import ring_flash_attn_qkvpacked_func
+from ring_flash_attn import fastseq_flash_attn_qkvpacked_func
 from dist_attn import DistAttention
 
 def log(msg, a, rank0_only=False):
@@ -32,15 +31,13 @@ def log(msg, a, rank0_only=False):
             )
         dist.barrier()
 
-
 def test_parallel_attention(seqlen, verify):
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     dtype = torch.bfloat16
     device = torch.device(f"cuda:{rank}")
-    torch.set_default_device(device)
 
-    sequence_parallel_type = "ulysses"
+    sequence_parallel_type = "fastseq"
 
     batch_size = 1
     # seqlen = 3816
@@ -73,12 +70,14 @@ def test_parallel_attention(seqlen, verify):
         print("# forward:")
         print("#" * 30)
     
-    ring_out = atten_module(local_x)
+    fastseq_out = atten_module(local_x)
 
     if verify:
         ### reference
         refer_qkv = atten_module.qkv(x)
-        refer_qkv = refer_qkv.reshape(batch_size, seqlen, 3, nheads, d).contiguous()
+        # refer_qkv = refer_qkv.reshape(batch_size, seqlen, 3, nheads, d).contiguous()
+        refer_qkv = refer_qkv.reshape(batch_size, seqlen, nheads, 3, d).contiguous()
+        refer_qkv = refer_qkv.permute((0, 1, 3, 2, 4)).contiguous()
         refer_out, refer_lse, _ = flash_attn_qkvpacked_func(
             refer_qkv,
             dropout_p=dropout_p,
@@ -90,7 +89,7 @@ def test_parallel_attention(seqlen, verify):
         )
         refer_local_out = refer_out.chunk(world_size, dim=1)[rank]
 
-        log("out diff", refer_local_out - ring_out)
+        log("out diff", refer_local_out - fastseq_out)
 
     num_iter = 20
     for i in range(num_iter):
@@ -118,7 +117,7 @@ def test_parallel_attention(seqlen, verify):
     peak_memory = peak_memory / (1024 * 1024 * 1024)
 
     if rank == 0 and log:
-        print(f"seqlen: {seqlen}, {num_iter / time:.3f} iter/s, {time / num_iter} ms, peak_memory: {peak_memory} GB")
+        print(f"{num_iter / time:.3f} iter/s, {time / num_iter} ms, peak_memory: {peak_memory} GB")
 
 if __name__ == "__main__":
     dist.init_process_group("nccl")

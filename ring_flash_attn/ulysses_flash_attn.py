@@ -89,7 +89,7 @@ class UlyssesFlashAttnFunc(torch.autograd.Function):
             deterministic=False,
         )
         # this should be out_padded
-        ctx.save_for_backward(q, k, v, out, softmax_lse)
+        # ctx.save_for_backward(q, k, v, out, softmax_lse)
         ctx.dropout_p = dropout_p
         ctx.softmax_scale = softmax_scale
         ctx.causal = causal
